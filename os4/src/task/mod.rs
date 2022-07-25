@@ -15,7 +15,7 @@ mod switch;
 mod task;
 
 use crate::loader::{get_app_data, get_num_app};
-use crate::mm::MemorySet;
+use crate::mm::{MemorySet, VirtPageNum, MapPermission, VirtAddr};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
 use alloc::vec::Vec;
@@ -23,6 +23,7 @@ use lazy_static::*;
 pub use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
 use crate::timer::get_time_us;
+use crate::config::{PAGE_SIZE,PAGE_SIZE_BITS};
 
 pub use context::TaskContext;
 
@@ -163,7 +164,7 @@ impl TaskManager {
             memory_set: MemorySet::new_bare(),
             ..inner.tasks[curr_id] 
         };
-        //it's a vec not a []
+        //it's a vec not an array
         tskctrblock
     }
     fn change_syscall_time(&self,syscall_id:usize)
@@ -171,6 +172,44 @@ impl TaskManager {
         let mut inner = self.inner.exclusive_access();
         let curr_id=inner.current_task;
         inner.tasks[curr_id].task_syscall_times[syscall_id]+=1;
+    }
+    fn task_map_an_area(&self,_start: usize, _len: usize, _port: usize) -> isize
+    {
+        let mut inner = self.inner.exclusive_access();
+        let curr_id=inner.current_task;
+
+        let mut page_num=_len/PAGE_SIZE;
+        if _len%PAGE_SIZE!=0{
+            page_num+=1;
+        }
+        for i in 0..page_num{
+            let vir_page_start=VirtPageNum(_start/PAGE_SIZE+i);
+            if inner.tasks[curr_id].memory_set.have_mapped(vir_page_start)
+            {
+                return -1;
+            }
+        }
+        let permission=MapPermission::from_bits(((_port<<1)|16)as u8);
+        inner.tasks[curr_id].memory_set.insert_framed_area(VirtAddr(_start) ,VirtAddr(_start+_len),permission.unwrap());
+        0
+    }
+    fn task_unmap_an_area(&self,_start: usize, _len: usize) -> isize
+    {
+        let mut inner = self.inner.exclusive_access();
+        let curr_id=inner.current_task;
+        let mut page_num=_len/PAGE_SIZE;
+        if _len%PAGE_SIZE!=0{
+            page_num+=1;
+        }
+        for i in 0..page_num{
+            let vir_page_start=VirtPageNum(_start/PAGE_SIZE+i);
+            if !inner.tasks[curr_id].memory_set.have_mapped(vir_page_start)
+            {
+                return -1;
+            }
+            inner.tasks[curr_id].memory_set.ummap_area(vir_page_start);
+        }
+        0
     }
 }
 
@@ -224,4 +263,12 @@ pub fn get_current_task() -> TaskControlBlock
 pub fn change_current_syscall_time(syscall_id:usize)
 {
     TASK_MANAGER.change_syscall_time(syscall_id);
+}
+pub fn task_map_an_area(_start: usize, _len: usize, _port: usize) -> isize
+{
+    TASK_MANAGER.task_map_an_area(_start, _len, _port)
+}
+pub fn task_unmap_an_area(_start: usize, _len: usize) -> isize
+{
+    TASK_MANAGER.task_unmap_an_area(_start,_len)
 }

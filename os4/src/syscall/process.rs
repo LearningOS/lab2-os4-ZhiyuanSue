@@ -4,7 +4,7 @@ use riscv::addr::page;
 use riscv::paging::PageTable;
 
 use crate::config::MAX_SYSCALL_NUM;
-use crate::task::{exit_current_and_run_next, suspend_current_and_run_next,current_user_token,get_current_task, TaskStatus};
+use crate::task::{exit_current_and_run_next, suspend_current_and_run_next,current_user_token,get_current_task, TaskStatus,task_map_an_area,task_unmap_an_area};
 use crate::timer::get_time_us;
 use crate::mm::{frame_alloc, VirtAddr,get_ptr_physical_addr};
 use crate::config::{PAGE_SIZE,PAGE_SIZE_BITS};
@@ -64,23 +64,11 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
     if _port & 0x7 == 0{
         return -1;
     }
-    let page_num=_len/PAGE_SIZE;
-    for i in 0..page_num{
-        let physical_mem=frame_alloc();
-        let page_start=_start+i*PAGE_SIZE;
-        match physical_mem{
-            Some(frame) => {
-
-            },
-            None => return -1
-        }
-    }
-    0
+    task_map_an_area(_start, _len, _port)
 }
 
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
-    //frame_dealloc()
-    -1
+    task_unmap_an_area(_start, _len)
 }
 
 // YOUR JOB: 引入虚地址后重写 sys_task_info

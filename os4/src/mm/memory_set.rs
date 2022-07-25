@@ -217,6 +217,27 @@ impl MemorySet {
     pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
         self.page_table.translate(vpn)
     }
+    pub fn have_mapped(&self,vpn: VirtPageNum)->bool
+    {
+        for i in 0..self.areas.len()
+        {
+            if self.areas[i].have_mapped(vpn){
+                return true;
+            }
+        }
+        false
+    }
+    pub fn ummap_area(&mut self,vpn: VirtPageNum)->bool{
+        for i in 0..self.areas.len()
+        {
+            if self.areas[i].have_mapped(vpn){
+                self.areas[i].unmap(&mut self.page_table);
+                self.areas.remove(i);
+                return true;
+            }
+        }
+        true
+    }
 }
 
 /// map area structure, controls a contiguous piece of virtual memory
@@ -301,6 +322,9 @@ impl MapArea {
             }
             current_vpn.step();
         }
+    }
+    pub fn have_mapped(&self,vpn: VirtPageNum)->bool{
+        vpn.0>=self.vpn_range.get_start().0 && vpn.0<self.vpn_range.get_end().0
     }
 }
 
